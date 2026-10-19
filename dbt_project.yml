@@ -1,0 +1,19 @@
+name: order_analytics
+version: "1.0.0"
+config-version: 2
+profile: order_analytics
+
+model-paths: [models]
+test-paths: [tests/data_tests]
+
+vars:
+  # Only raw files loaded on or before this date are visible: lets the runner
+  # replay history day by day exactly as production would have seen it.
+  as_of: "9999-12-31"
+
+models:
+  order_analytics:
+    staging:
+      +materialized: view
+    marts:
+      +materialized: table

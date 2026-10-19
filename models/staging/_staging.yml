@@ -1,0 +1,46 @@
+version: 2
+
+models:
+  - name: stg_order_events
+    description: One clean row per event (typed, UTC, de-duplicated).
+    columns:
+      - name: event_id
+        data_tests: [unique, not_null]
+      - name: event_type
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [order_placed, order_paid, order_refunded]
+      - name: order_id
+        data_tests: [not_null]
+      - name: occurred_at_utc
+        data_tests: [not_null]
+      - name: amount_idr
+        data_tests: [not_null]
+
+  - name: stg_customer_exports
+    columns:
+      - name: customer_id
+        data_tests: [not_null]
+      - name: tier
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [bronze, silver, gold]
+
+unit_tests:
+  - name: stg_order_events_cleans_messy_input
+    description: Duplicates collapse, string amounts become integers, mixed offsets land on one UTC timeline, missing channel becomes 'unknown'.
+    model: stg_order_events
+    overrides:
+      vars: { as_of: "9999-12-31" } # the fixture must not depend on the caller's run date
+    given:
+      - input: ref('base_order_events')
+        rows:
+          - {event_id: E1, event_type: order_placed, order_id: O1, customer_id: C1, occurred_at: "2026-01-01T10:00:00+07:00", amount_idr: "125000", channel: null, filename: "data/raw/order_events/dt=2026-01-01/events.jsonl"}
+          - {event_id: E1, event_type: order_placed, order_id: O1, customer_id: C1, occurred_at: "2026-01-01T10:00:00+07:00", amount_idr: "125000", channel: null, filename: "data/raw/order_events/dt=2026-01-02/events.jsonl"}
+          - {event_id: E2, event_type: order_paid, order_id: O1, customer_id: C1, occurred_at: "2026-01-01T03:30:00Z", amount_idr: "125000", channel: web, filename: "data/raw/order_events/dt=2026-01-01/events.jsonl"}
+    expect:
+      rows:
+        - {event_id: E1, occurred_at_utc: "2026-01-01 03:00:00", amount_idr: 125000, channel: unknown, load_date: "2026-01-01"}
+        - {event_id: E2, occurred_at_utc: "2026-01-01 03:30:00", amount_idr: 125000, channel: web, load_date: "2026-01-01"}

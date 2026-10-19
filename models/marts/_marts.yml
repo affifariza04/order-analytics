@@ -1,0 +1,74 @@
+version: 2
+
+# Marts are consumed by dashboards and other teams, so their shape is a promise:
+# `contract: enforced` makes dbt fail the build if a column or type drifts.
+
+models:
+  - name: dim_customers_scd2
+    description: Every version of every customer, with [valid_from, valid_to) validity windows.
+    config:
+      contract: { enforced: true }
+    columns:
+      - { name: customer_version_id, data_type: varchar, data_tests: [unique, not_null] }
+      - { name: customer_id, data_type: varchar, data_tests: [not_null] }
+      - { name: name, data_type: varchar }
+      - { name: city, data_type: varchar }
+      - { name: tier, data_type: varchar }
+      - { name: signup_date, data_type: date }
+      - { name: valid_from, data_type: date, data_tests: [not_null] }
+      - { name: valid_to, data_type: date }
+      - { name: is_current, data_type: boolean }
+
+  - name: fct_orders
+    description: One row per order, folded from its event stream; incremental with late-data correction.
+    config:
+      contract: { enforced: true }
+    columns:
+      - { name: order_id, data_type: varchar, constraints: [{ type: not_null }], data_tests: [unique, not_null] }
+      - name: customer_id
+        data_type: varchar
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('dim_customers_scd2')
+                field: customer_id
+      - { name: order_date_wib, data_type: date, data_tests: [not_null] }
+      - { name: placed_at_utc, data_type: timestamp }
+      - { name: paid_at_utc, data_type: timestamp }
+      - { name: refunded_at_utc, data_type: timestamp }
+      - name: status
+        data_type: varchar
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [pending, paid, refunded]
+      - { name: amount_idr, data_type: bigint, data_tests: [not_null] }
+      - { name: channel, data_type: varchar }
+      - { name: customer_tier_at_order, data_type: varchar, data_tests: [not_null] }
+      - { name: customer_city_at_order, data_type: varchar }
+      - { name: last_loaded_date, data_type: date }
+
+  - name: mart_daily_revenue
+    config:
+      contract: { enforced: true }
+    columns:
+      - { name: order_date_wib, data_type: date }
+      - { name: channel, data_type: varchar }
+      - { name: orders_placed, data_type: bigint }
+      - { name: orders_paid, data_type: bigint }
+      - { name: gross_revenue_idr, data_type: hugeint }
+      - { name: refunds_idr, data_type: hugeint }
+      - { name: net_revenue_idr, data_type: hugeint }
+      - { name: avg_order_value_idr, data_type: double }
+      - { name: payment_conversion, data_type: double }
+
+  - name: mart_cohort_retention
+    config:
+      contract: { enforced: true }
+    columns:
+      - { name: cohort_month, data_type: date }
+      - { name: months_since_first, data_type: bigint }
+      - { name: cohort_size, data_type: bigint }
+      - { name: active_customers, data_type: bigint }
+      - { name: retention_rate, data_type: double }

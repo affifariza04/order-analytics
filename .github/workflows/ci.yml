@@ -1,0 +1,21 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --frozen
+      - run: uv run ruff check .
+      - name: Generate raw data
+        run: uv run python -m pipeline.generate --days 60
+      - name: dbt build (models, contracts, unit + data tests)
+        run: uv run python -m pipeline.run rebuild
+      - name: Incremental == full rebuild, idempotency, point-in-time joins
+        run: uv run pytest -q
